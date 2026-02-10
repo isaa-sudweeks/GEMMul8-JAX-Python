@@ -2,3 +2,4 @@
 /.venv
 /.vscode
 /CPP_BUILD
+/GEMMul8/build
