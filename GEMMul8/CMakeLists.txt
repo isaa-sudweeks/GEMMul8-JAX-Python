@@ -28,7 +28,7 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-nanobind_add_module(gemmul8_ffi dist_name gemmul8_ffi ext/pybind.cpp ext/gemmul8.cu ext/gemmul8_ffi_cuda.cu)
+nanobind_add_module(gemmul8_ffi ext/pybind.cpp ext/gemmul8.cu ext/gemmul8_ffi_cuda.cu)
 
 # Add include directories
 target_include_directories(gemmul8_ffi PRIVATE ext/include ${JAXLIB_INCLUDE_DIR})
