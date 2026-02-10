@@ -22,6 +22,8 @@ else()
                       "On a cluster, you may need to run 'module load cuda'.")
 endif()
 
+find_package(CUDAToolkit REQUIRED)
+
 execute_process(
     COMMAND "${Python3_EXECUTABLE}" -c "import jaxlib; import os; print(os.path.join(os.path.dirname(jaxlib.__file__), 'include'))"
     OUTPUT_VARIABLE JAXLIB_INCLUDE_DIR
@@ -32,6 +34,10 @@ nanobind_add_module(gemmul8_ffi ext/pybind.cpp ext/gemmul8.cu ext/gemmul8_ffi_cu
 
 # Add include directories
 target_include_directories(gemmul8_ffi PRIVATE ext/include ${JAXLIB_INCLUDE_DIR})
+
+# Explicitly link CUDA runtime + cuBLAS so symbols like cublasCreate_v2
+# resolve when importing the Python extension.
+target_link_libraries(gemmul8_ffi PRIVATE CUDA::cudart CUDA::cublas)
 
 # Install the extension into the Python package so `from GEMMul8 import api`
 # can resolve `GEMMul8.gemmul8_ffi` after pip install.
