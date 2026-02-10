@@ -2,7 +2,10 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-import gemmul8_ffi
+try:
+    from . import gemmul8_ffi
+except ImportError:
+    import gemmul8_ffi
 
 
 def register():

@@ -32,3 +32,11 @@ nanobind_add_module(gemmul8_ffi ext/pybind.cpp ext/gemmul8.cu ext/gemmul8_ffi_cu
 
 # Add include directories
 target_include_directories(gemmul8_ffi PRIVATE ext/include ${JAXLIB_INCLUDE_DIR})
+
+# Install the extension into the Python package so `from GEMMul8 import api`
+# can resolve `GEMMul8.gemmul8_ffi` after pip install.
+install(TARGETS gemmul8_ffi
+  LIBRARY DESTINATION GEMMul8
+  RUNTIME DESTINATION GEMMul8
+  ARCHIVE DESTINATION GEMMul8
+)
