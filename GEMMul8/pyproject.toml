@@ -1,0 +1,13 @@
+[build-system]
+requires = ["scikit-build-core", "nanobind", "jax", "jaxlib"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "GEMMul8"
+version = "0.0.1"
+description = "GEMMul8 CUDA extension"
+requires-python = ">=3.8"
+
+[tool.scikit-build]
+cmake.version = "CMakeLists.txt"
+cmake.source-dir = "."

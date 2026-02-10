@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15...3.27)
-project(GEMMul8)
+project(GEMMul8 LANGUAGES CXX CUDA)
 
 if (CMAKE_VERSION VERSION_LESS 3.18)
   set(DEV_MODULE Development)
@@ -8,10 +8,7 @@ else()
 endif()
 
 find_package(Python COMPONENTS Interpreter ${DEV_MODULE} REQUIRED)
-if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-  set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
-  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
-endif()
+find_package(nanobind CONFIG REQUIRED)
 
 execute_process(
     COMMAND "${Python3_EXECUTABLE}" -c "import jaxlib; import os; print(os.path.join(os.path.dirname(jaxlib.__file__), 'include'))"
@@ -19,6 +16,7 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-message(STATUS "JAXLIB include dir: ${JAXLIB_INCLUDE_DIR}")
+nanobind_add_module(gemmul8_ffi dist_name gemmul8_ffi ext/pybind.cpp ext/gemmul8.cu ext/gemmul8_ffi_cuda.cu)
 
-include_directories(${JAXLIB_INCLUDE_DIR})
+# Add include directories
+target_include_directories(gemmul8_ffi PRIVATE ext/include ${JAXLIB_INCLUDE_DIR})
