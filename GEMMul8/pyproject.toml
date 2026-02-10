@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "GEMMul8"
-version = "0.0.1"
+version = "0.1.0"
 description = "GEMMul8 CUDA extension"
 requires-python = ">=3.8"
 
