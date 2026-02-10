@@ -8,6 +8,37 @@
 
 namespace ffi = xla::ffi;
 
+template <typename E = ffi::Error>
+auto InternalErrorImpl(const char *msg, int) -> decltype(E::Internal(msg)) {
+  return E::Internal(msg);
+}
+
+template <typename E = ffi::Error>
+auto InternalErrorImpl(const char *msg, long)
+    -> decltype(E(ffi::ErrorCode::kInternal, msg)) {
+  return E(ffi::ErrorCode::kInternal, msg);
+}
+
+static ffi::Error InternalError(const char *msg) {
+  return InternalErrorImpl(msg, 0);
+}
+
+template <typename E = ffi::Error>
+auto InvalidArgumentErrorImpl(const char *msg, int)
+    -> decltype(E::InvalidArgument(msg)) {
+  return E::InvalidArgument(msg);
+}
+
+template <typename E = ffi::Error>
+auto InvalidArgumentErrorImpl(const char *msg, long)
+    -> decltype(E(ffi::ErrorCode::kInvalidArgument, msg)) {
+  return E(ffi::ErrorCode::kInvalidArgument, msg);
+}
+
+static ffi::Error InvalidArgumentError(const char *msg) {
+  return InvalidArgumentErrorImpl(msg, 0);
+}
+
 struct ThreadLocalState {
   cublasHandle_t cublas = nullptr;
 
@@ -31,12 +62,12 @@ static cublasHandle_t GetCublasHandle(cudaStream_t stream) {
 
 // NOTE: This is a grow-only allocator. We never free during runtime.
 // (Safe for XLA long runs; you can add an explicit finalizer later if desired.)
-static ffi::Error EnsureWorkspace(cudaStream_t stream, size_t required_bytes,
-                                  size_t workA_bytes, size_t workB_bytes) {
+static bool EnsureWorkspace(cudaStream_t stream, size_t required_bytes,
+                            size_t workA_bytes, size_t workB_bytes) {
 
   if (tls.work_base && tls.work_bytes >= required_bytes &&
       tls.workA_bytes == workA_bytes && tls.workB_bytes == workB_bytes) {
-    return ffi::Error::Success();
+    return true;
   }
 
   // If we already had one but sizes changed, just grow/realloc.
@@ -45,15 +76,14 @@ static ffi::Error EnsureWorkspace(cudaStream_t stream, size_t required_bytes,
   void *new_ptr = nullptr;
   cudaError_t st = cudaMallocAsync(&new_ptr, required_bytes, stream);
   if (st != cudaSuccess) {
-    return ffi::Error::Internal(
-        "cudaMallocAsync failed for GEMMul8 workspace.");
+    return false;
   }
 
   tls.work_base = new_ptr;
   tls.work_bytes = required_bytes;
   tls.workA_bytes = workA_bytes;
   tls.workB_bytes = workB_bytes;
-  return ffi::Error::Success();
+  return true;
 }
 
 ffi::Error Gemmul8GemmF64Impl(
@@ -70,10 +100,11 @@ ffi::Error Gemmul8GemmF64Impl(
     int32_t use_extra_workspace, // 0/1: template parameter UseExtraWorkspace
     double alpha, double beta,
     // buffers
-    ffi::Buffer<ffi::F64> A, ffi::Buffer<ffi::F64> B,
-    ffi::ResultBuffer<ffi::F64> C) {
-  if (A.rank() != 2 || B.rank() != 2 || C->rank() != 2) {
-    return ffi::Error::InvalidArgument("Only rank-2 matrices supported.");
+    ffi::Buffer<ffi::DataType::F64> A, ffi::Buffer<ffi::DataType::F64> B,
+    ffi::ResultBuffer<ffi::DataType::F64> C) {
+  if (A.dimensions().size() != 2 || B.dimensions().size() != 2 ||
+      C->dimensions().size() != 2) {
+    return InvalidArgumentError("Only rank-2 matrices supported.");
   }
 
   // Output shape
@@ -86,8 +117,7 @@ ffi::Error Gemmul8GemmF64Impl(
   // Basic consistency check (shape only)
   const int64_t kB = (transb == 0) ? B.dimensions()[0] : B.dimensions()[1];
   if (kB != k) {
-    return ffi::Error::InvalidArgument(
-        "Inner dimension mismatch between A and B.");
+    return InvalidArgumentError("Inner dimension mismatch between A and B.");
   }
 
   // cuBLAS handle on XLA-provided stream
@@ -125,9 +155,9 @@ ffi::Error Gemmul8GemmF64Impl(
   }
 
   // Ensure we have a persistent buffer large enough
-  auto err = EnsureWorkspace(stream, total_ws, workSizeA, workSizeB);
-  if (!err.ok())
-    return err;
+  if (!EnsureWorkspace(stream, total_ws, workSizeA, workSizeB)) {
+    return InternalError("cudaMallocAsync failed for GEMMul8 workspace.");
+  }
 
   // Split workspace (matches README pattern)
   auto *base = reinterpret_cast<int8_t *>(tls.work_base);
@@ -139,16 +169,18 @@ ffi::Error Gemmul8GemmF64Impl(
   if (use_extra_workspace) {
     (void)gemmul8::gemm<double, /*UseExtraWorkspace=*/true>(
         handle, opA, opB, (size_t)m, (size_t)n, (size_t)k, &alpha,
-        (const double *)A.data(), (size_t)lda, (const double *)B.data(),
-        (size_t)ldb, &beta, (double *)C->data(), (size_t)ldc,
+        (const double *)A.typed_data(), (size_t)lda,
+        (const double *)B.typed_data(), (size_t)ldb, &beta,
+        (double *)C->typed_data(), (size_t)ldc,
         (unsigned)num_moduli, (bool)(fastmode != 0), work_rem, workA, workB,
         (bool)(enable_skip_scalA != 0), (bool)(enable_skip_scalB != 0),
         (bool)(skip_scalA != 0), (bool)(skip_scalB != 0));
   } else {
     (void)gemmul8::gemm<double, /*UseExtraWorkspace=*/false>(
         handle, opA, opB, (size_t)m, (size_t)n, (size_t)k, &alpha,
-        (const double *)A.data(), (size_t)lda, (const double *)B.data(),
-        (size_t)ldb, &beta, (double *)C->data(), (size_t)ldc,
+        (const double *)A.typed_data(), (size_t)lda,
+        (const double *)B.typed_data(), (size_t)ldb, &beta,
+        (double *)C->typed_data(), (size_t)ldc,
         (unsigned)num_moduli, (bool)(fastmode != 0), work_rem, workA, workB,
         (bool)(enable_skip_scalA != 0), (bool)(enable_skip_scalB != 0),
         (bool)(skip_scalA != 0), (bool)(skip_scalB != 0));
@@ -157,24 +189,24 @@ ffi::Error Gemmul8GemmF64Impl(
   return ffi::Error::Success();
 }
 
-XLA_FFI_DEFINE_HANDLER(Gemmul8GemmF64, Gemmul8GemmF64Impl,
-                       ffi::Ffi::Bind()
-                           .Ctx<ffi::PlatformStream<cudaStream_t>>()
-                           .Attr<int32_t>("transa")
-                           .Attr<int32_t>("transb")
-                           .Attr<int32_t>("num_moduli")
-                           .Attr<int32_t>("fastmode")
-                           .Attr<int32_t>("enable_skip_scalA")
-                           .Attr<int32_t>("enable_skip_scalB")
-                           .Attr<int32_t>("skip_scalA")
-                           .Attr<int32_t>("skip_scalB")
-                           .Attr<int32_t>("use_extra_workspace")
-                           .Attr<double>("alpha")
-                           .Attr<double>("beta")
-                           .Arg<ffi::Buffer<ffi::F64>>() // A
-                           .Arg<ffi::Buffer<ffi::F64>>() // B
-                           .Ret<ffi::Buffer<ffi::F64>>() // C
-);
-
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "gemmul8_gemm_f64", "CUDA",
-                         Gemmul8GemmF64);
+extern "C" XLA_FFI_Error* gemmul8_gemm_f64(XLA_FFI_CallFrame* call_frame) {
+  static auto* handler = ffi::Ffi::Bind()
+                             .Ctx<ffi::PlatformStream<cudaStream_t>>()
+                             .Attr<int32_t>("transa")
+                             .Attr<int32_t>("transb")
+                             .Attr<int32_t>("num_moduli")
+                             .Attr<int32_t>("fastmode")
+                             .Attr<int32_t>("enable_skip_scalA")
+                             .Attr<int32_t>("enable_skip_scalB")
+                             .Attr<int32_t>("skip_scalA")
+                             .Attr<int32_t>("skip_scalB")
+                             .Attr<int32_t>("use_extra_workspace")
+                             .Attr<double>("alpha")
+                             .Attr<double>("beta")
+                             .Arg<ffi::Buffer<ffi::DataType::F64>>() // A
+                             .Arg<ffi::Buffer<ffi::DataType::F64>>() // B
+                             .Ret<ffi::Buffer<ffi::DataType::F64>>() // C
+                             .To(Gemmul8GemmF64Impl)
+                             .release();
+  return handler->Call(call_frame);
+}
