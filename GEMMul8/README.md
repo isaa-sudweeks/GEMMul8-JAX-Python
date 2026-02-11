@@ -20,12 +20,25 @@ This project is structured as a subdirectory within the repository. To install i
 pip install "git+https://github.com/isaa-sudweeks/GEMMul8-JAX-Python.git#subdirectory=GEMMul8"
 ```
 
+For Hopper GPUs (H100/H200), set CUDA architecture explicitly during build:
+
+```bash
+CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=90" \
+pip install "git+https://github.com/isaa-sudweeks/GEMMul8-JAX-Python.git#subdirectory=GEMMul8"
+```
+
 ### From Local Source
 
 If you have cloned the repository, navigate to the `GEMMul8` directory and run:
 
 ```bash
 pip install .
+```
+
+On Hopper GPUs (H100/H200), use:
+
+```bash
+CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=90" pip install .
 ```
 
 `pip install` now declares runtime dependencies on `jax[cuda12]` and `jaxlib`,
