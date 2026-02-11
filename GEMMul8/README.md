@@ -28,6 +28,10 @@ If you have cloned the repository, navigate to the `GEMMul8` directory and run:
 pip install .
 ```
 
+`pip install` now declares runtime dependencies on `jax[cuda12]` and `jaxlib`,
+so CUDA-enabled JAX packages are installed automatically when available for your
+platform.
+
 ## Usage
 
 ```python

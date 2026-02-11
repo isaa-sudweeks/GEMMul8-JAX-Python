@@ -11,16 +11,28 @@ except ImportError:
 def _get_ffi_module():
     # JAX exposes FFI under different modules across releases.
     if hasattr(jax, "ffi"):
-        return jax.ffi
+        ffi_mod = jax.ffi
+        if hasattr(ffi_mod, "register_ffi_target") and hasattr(ffi_mod, "ffi_call"):
+            return ffi_mod
     try:
         from jax.extend import ffi as ffi_mod
-    except Exception as exc:
-        raise RuntimeError(
-            "GEMMul8 requires JAX FFI, but neither `jax.ffi` nor "
-            "`jax.extend.ffi` is available. Upgrade JAX/JAXLIB to a "
-            "version with FFI support."
-        ) from exc
-    return ffi_mod
+        if hasattr(ffi_mod, "register_ffi_target") and hasattr(ffi_mod, "ffi_call"):
+            return ffi_mod
+    except Exception:
+        pass
+
+    try:
+        from jax.experimental import ffi as ffi_mod
+        if hasattr(ffi_mod, "register_ffi_target") and hasattr(ffi_mod, "ffi_call"):
+            return ffi_mod
+    except Exception:
+        pass
+
+    raise RuntimeError(
+        "GEMMul8 requires a JAX version that provides both "
+        "`register_ffi_target` and `ffi_call` (for example, current "
+        "JAX/JAXLIB releases with CUDA support)."
+    )
 
 
 def register():

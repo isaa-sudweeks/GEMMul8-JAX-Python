@@ -7,6 +7,10 @@ name = "GEMMul8"
 version = "0.1.0"
 description = "GEMMul8 CUDA extension"
 requires-python = ">=3.8"
+dependencies = [
+  "jax[cuda12]",
+  "jaxlib",
+]
 
 [tool.scikit-build]
 cmake.version = "CMakeLists.txt"
