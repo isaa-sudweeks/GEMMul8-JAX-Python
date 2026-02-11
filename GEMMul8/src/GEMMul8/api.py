@@ -8,8 +8,24 @@ except ImportError:
     import gemmul8_ffi
 
 
+def _get_ffi_module():
+    # JAX exposes FFI under different modules across releases.
+    if hasattr(jax, "ffi"):
+        return jax.ffi
+    try:
+        from jax.extend import ffi as ffi_mod
+    except Exception as exc:
+        raise RuntimeError(
+            "GEMMul8 requires JAX FFI, but neither `jax.ffi` nor "
+            "`jax.extend.ffi` is available. Upgrade JAX/JAXLIB to a "
+            "version with FFI support."
+        ) from exc
+    return ffi_mod
+
+
 def register():
-    jax.ffi.register_ffi_target(
+    ffi_mod = _get_ffi_module()
+    ffi_mod.register_ffi_target(
         "gemmul8_gemm_f64",
         gemmul8_ffi.gemmul8_gemm_f64(),
         platform="CUDA",
@@ -44,7 +60,8 @@ def gemmul8_dgemm(
 
     out_type = jax.ShapeDtypeStruct((m, n), jnp.float64)
 
-    call = jax.ffi.ffi_call(
+    ffi_mod = _get_ffi_module()
+    call = ffi_mod.ffi_call(
         "gemmul8_gemm_f64",
         out_type,
         vmap_method="broadcast_all",
