@@ -110,14 +110,11 @@ ffi::Error Gemmul8GemmF64Impl(
     return InvalidArgumentError("Only rank-2 matrices supported.");
   }
 
-  // Output shape
+  // Row-major GEMM dimensions expected by the Python API:
+  // C(m, n) = opA(A) @ opB(B), where opX is transpose when transx == 1.
   const int64_t m = c_dims[0];
   const int64_t n = c_dims[1];
-
-  // Infer k
   const int64_t k = (transa == 0) ? a_dims[1] : a_dims[0];
-
-  // Basic consistency check (shape only)
   const int64_t kB = (transb == 0) ? b_dims[0] : b_dims[1];
   if (kB != k) {
     return InvalidArgumentError("Inner dimension mismatch between A and B.");
@@ -126,16 +123,25 @@ ffi::Error Gemmul8GemmF64Impl(
   // cuBLAS handle on XLA-provided stream
   cublasHandle_t handle = GetCublasHandle(stream);
 
-  const cublasOperation_t opA = (transa == 0) ? CUBLAS_OP_N : CUBLAS_OP_T;
-  const cublasOperation_t opB = (transb == 0) ? CUBLAS_OP_N : CUBLAS_OP_T;
+  // JAX arrays are row-major in memory, while GEMMul8/cuBLAS consume
+  // column-major buffers. Map row-major C = opA(A) @ opB(B) to column-major:
+  // C_col = (C_row)^T = (opB(B))^T @ (opA(A))^T.
+  // This means swapping operands and using the row-major transpose flags to
+  // decide column-major ops on the swapped inputs.
+  const cublasOperation_t opA_col =
+      (transb == 0) ? CUBLAS_OP_N : CUBLAS_OP_T; // applied to B buffer
+  const cublasOperation_t opB_col =
+      (transa == 0) ? CUBLAS_OP_N : CUBLAS_OP_T; // applied to A buffer
 
-  // NOTE: GEMMul8 API expects leading dims like cuBLAS.
-  // This minimal version assumes column-major interpretation.
-  // If you pass JAX arrays, use jnp.asfortranarray-like layouts or accept a
-  // transpose convention.
-  const int64_t lda = (opA == CUBLAS_OP_N) ? m : k;
-  const int64_t ldb = (opB == CUBLAS_OP_N) ? k : n;
-  const int64_t ldc = m;
+  const int64_t m_col = n;
+  const int64_t n_col = m;
+  const int64_t k_col = k;
+
+  // Leading dimensions for contiguous row-major buffers reinterpreted as
+  // column-major transposed views.
+  const int64_t lda_col = b_dims[1]; // rows of B_col storage
+  const int64_t ldb_col = a_dims[1]; // rows of A_col storage
+  const int64_t ldc_col = n;         // rows of C_col storage
 
   // Workspace sizing (reserve extra space for skip-scaling)
   size_t workSizeA = 0, workSizeB = 0;
@@ -146,13 +152,13 @@ ffi::Error Gemmul8GemmF64Impl(
   if (use_extra_workspace) {
     total_ws =
         gemmul8::workSize</*is_Complex=*/false, /*UseExtraWorkspace=*/true>(
-            (size_t)m, (size_t)n, (size_t)k, (unsigned)num_moduli,
+            (size_t)m_col, (size_t)n_col, (size_t)k_col, (unsigned)num_moduli,
             (bool)(enable_skip_scalA != 0), (bool)(enable_skip_scalB != 0),
             &workSizeA, &workSizeB);
   } else {
     total_ws =
         gemmul8::workSize</*is_Complex=*/false, /*UseExtraWorkspace=*/false>(
-            (size_t)m, (size_t)n, (size_t)k, (unsigned)num_moduli,
+            (size_t)m_col, (size_t)n_col, (size_t)k_col, (unsigned)num_moduli,
             (bool)(enable_skip_scalA != 0), (bool)(enable_skip_scalB != 0),
             &workSizeA, &workSizeB);
   }
@@ -171,19 +177,19 @@ ffi::Error Gemmul8GemmF64Impl(
   // Call GEMMul8 (DGEMM emulation)
   if (use_extra_workspace) {
     (void)gemmul8::gemm<double, /*UseExtraWorkspace=*/true>(
-        handle, opA, opB, (size_t)m, (size_t)n, (size_t)k, &alpha,
-        (const double *)A.typed_data(), (size_t)lda,
-        (const double *)B.typed_data(), (size_t)ldb, &beta,
-        (double *)C->typed_data(), (size_t)ldc,
+        handle, opA_col, opB_col, (size_t)m_col, (size_t)n_col, (size_t)k_col,
+        &alpha, (const double *)B.typed_data(), (size_t)lda_col,
+        (const double *)A.typed_data(), (size_t)ldb_col, &beta,
+        (double *)C->typed_data(), (size_t)ldc_col,
         (unsigned)num_moduli, (bool)(fastmode != 0), work_rem, workA, workB,
         (bool)(enable_skip_scalA != 0), (bool)(enable_skip_scalB != 0),
         (bool)(skip_scalA != 0), (bool)(skip_scalB != 0));
   } else {
     (void)gemmul8::gemm<double, /*UseExtraWorkspace=*/false>(
-        handle, opA, opB, (size_t)m, (size_t)n, (size_t)k, &alpha,
-        (const double *)A.typed_data(), (size_t)lda,
-        (const double *)B.typed_data(), (size_t)ldb, &beta,
-        (double *)C->typed_data(), (size_t)ldc,
+        handle, opA_col, opB_col, (size_t)m_col, (size_t)n_col, (size_t)k_col,
+        &alpha, (const double *)B.typed_data(), (size_t)lda_col,
+        (const double *)A.typed_data(), (size_t)ldb_col, &beta,
+        (double *)C->typed_data(), (size_t)ldc_col,
         (unsigned)num_moduli, (bool)(fastmode != 0), work_rem, workA, workB,
         (bool)(enable_skip_scalA != 0), (bool)(enable_skip_scalB != 0),
         (bool)(skip_scalA != 0), (bool)(skip_scalB != 0));
