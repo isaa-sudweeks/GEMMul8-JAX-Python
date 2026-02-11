@@ -12,24 +12,22 @@ It exposes a `gemmul8_dgemm` function accessible through JAX's FFI (Foreign Func
 
 ## Installation
 
-This project is structured as a subdirectory within the repository. To install it directly from GitHub using `pip`, you must specify the subdirectory.
-
 ### From GitHub
 
 ```bash
-pip install "git+https://github.com/isaa-sudweeks/GEMMul8-JAX-Python.git#subdirectory=GEMMul8"
+pip install "git+https://github.com/isaa-sudweeks/GEMMul8-JAX-Python.git"
 ```
 
 For Hopper GPUs (H100/H200), set CUDA architecture explicitly during build:
 
 ```bash
 CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=90" \
-pip install "git+https://github.com/isaa-sudweeks/GEMMul8-JAX-Python.git#subdirectory=GEMMul8"
+pip install "git+https://github.com/isaa-sudweeks/GEMMul8-JAX-Python.git"
 ```
 
 ### From Local Source
 
-If you have cloned the repository, navigate to the `GEMMul8` directory and run:
+If you have cloned the repository, run:
 
 ```bash
 pip install .
@@ -63,3 +61,38 @@ C = gemmul8_dgemm(A, B)
 ```
 
 `gemmul8_dgemm` auto-registers the CUDA FFI target on first use.
+
+## `gemmul8_dgemm` Parameters and Defaults
+
+Signature:
+
+```python
+gemmul8_dgemm(
+    A, B,
+    transa=0,
+    transb=0,
+    num_moduli=14,
+    fastmode=1,
+    enable_skip_scalA=0,
+    enable_skip_scalB=0,
+    skip_scalA=0,
+    skip_scalB=0,
+    use_extra_workspace=1,
+    alpha=1.0,
+    beta=0.0,
+)
+```
+
+- `A` (required): left input matrix (`float64` JAX array).
+- `B` (required): right input matrix (`float64` JAX array).
+- `transa` (default `0`): whether to transpose `A` before multiplication (`0` no, `1` yes).
+- `transb` (default `0`): whether to transpose `B` before multiplication (`0` no, `1` yes).
+- `num_moduli` (default `14`): number of modular channels used internally by GEMMul8.
+- `fastmode` (default `1`): enables the fast execution path when set to `1`.
+- `enable_skip_scalA` (default `0`): enables skip-scaling control for `A`.
+- `enable_skip_scalB` (default `0`): enables skip-scaling control for `B`.
+- `skip_scalA` (default `0`): skip-scaling selector/value for `A` (used when `enable_skip_scalA=1`).
+- `skip_scalB` (default `0`): skip-scaling selector/value for `B` (used when `enable_skip_scalB=1`).
+- `use_extra_workspace` (default `1`): use extra temporary workspace to improve kernel behavior/performance.
+- `alpha` (default `1.0`): scalar multiplier applied to `A @ B`.
+- `beta` (default `0.0`): scalar multiplier for any accumulated output term.
