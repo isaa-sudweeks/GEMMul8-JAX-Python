@@ -48,6 +48,7 @@ platform.
 ## Usage
 
 ```python
+import jax
 import jax.numpy as jnp
 from GEMMul8.api import gemmul8_dgemm
 
@@ -60,3 +61,5 @@ B = jax.random.normal(k2, (128, 128), dtype=jnp.float64)
 # Perform matrix multiplication using GEMMul8
 C = gemmul8_dgemm(A, B)
 ```
+
+`gemmul8_dgemm` auto-registers the CUDA FFI target on first use.

@@ -1,11 +1,16 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
+from threading import Lock
 
 try:
     from . import gemmul8_ffi
 except ImportError:
     import gemmul8_ffi
+
+
+_REGISTER_LOCK = Lock()
+_REGISTERED = False
 
 
 def _get_ffi_module():
@@ -36,12 +41,23 @@ def _get_ffi_module():
 
 
 def register():
-    ffi_mod = _get_ffi_module()
-    ffi_mod.register_ffi_target(
-        "gemmul8_gemm_f64",
-        gemmul8_ffi.gemmul8_gemm_f64(),
-        platform="CUDA",
-    )
+    global _REGISTERED
+    with _REGISTER_LOCK:
+        if _REGISTERED:
+            return
+
+        ffi_mod = _get_ffi_module()
+        ffi_mod.register_ffi_target(
+            "gemmul8_gemm_f64",
+            gemmul8_ffi.gemmul8_gemm_f64(),
+            platform="CUDA",
+        )
+        _REGISTERED = True
+
+
+def _ensure_registered():
+    # Ensure the CUDA FFI target exists before dispatching the call.
+    register()
 
 
 def gemmul8_dgemm(
@@ -60,6 +76,8 @@ def gemmul8_dgemm(
     alpha: float = 1.0,
     beta: float = 0.0,
 ):
+    _ensure_registered()
+
     if A.dtype != jnp.float64 or B.dtype != jnp.float64:
         raise TypeError("gemmul8_dgemm: float64 only")
 
